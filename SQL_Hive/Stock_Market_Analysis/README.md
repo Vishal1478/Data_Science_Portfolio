@@ -13,3 +13,5 @@ To determine when to buy, sell and hold stocks
 
 ## Method:
 Simple moving Average
+
+**Note: This file is been excuted in MYSQL**
