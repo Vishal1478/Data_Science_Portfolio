@@ -8,4 +8,4 @@ To get a better understanding of the taxi system so that the city of New York ca
 ## Aim:
 Performing Exploratory Analysis via queries
 
-** This file is executed in hue editor**
+**This file is executed in hue editor**
