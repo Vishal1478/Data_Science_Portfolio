@@ -1,4 +1,4 @@
-![](https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Machine_Learning/Suprise_Housing/Suprise_Housing.ipynb)
+![](https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Machine_Learning/Suprise_Housing/Housing.jpeg)
 
 # Suprise Housing
 
