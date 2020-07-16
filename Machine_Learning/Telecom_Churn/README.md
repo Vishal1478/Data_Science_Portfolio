@@ -1,4 +1,4 @@
-[]!(https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Machine_Learning/Telecom_Churn/How-To-Learn-From-Customer-Churn.jfif)
+![](https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Machine_Learning/Telecom_Churn/Telecom_Churn.PNG)
 
 # Telecom_Churn_Case_Study
 
