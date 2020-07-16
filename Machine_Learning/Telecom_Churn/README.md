@@ -13,6 +13,6 @@ is genrated by them
 - Random Forest
 
 ## Output:
-- Created model which will help us to identify customers who are going to churn
+- Created model which will help us to identify customers who are going to churn with model accuracy of 91%
 - Found top attributes which can be the key indicator if a customer is going to churn
 - Providng recommendations on how to retain customers
