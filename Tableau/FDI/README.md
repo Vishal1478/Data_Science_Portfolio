@@ -13,4 +13,5 @@ FDI on various sector in crores is given from a time period of 2000 - 2017
 4.Creating dashboard
 
 ## Output:
-
+![](https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Tableau/FDI/D1.PNG)
+![](https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Tableau/FDI/D2.PNG)
