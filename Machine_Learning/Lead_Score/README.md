@@ -1,3 +1,5 @@
+![](https://github.com/Vishal1478/Data_Science_Portfolio/blob/master/Machine_Learning/Lead_Score/lead_scor.jpg)
+
 # Lead Scoring Case Study
 
 ## Problem Statement:
