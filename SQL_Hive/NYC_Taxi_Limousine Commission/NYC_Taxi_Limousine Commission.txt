@@ -1,0 +1,621 @@
+-- The New York City Taxi & Limousine Commission (TLC) Assignment
+-- The Dataset provided contains the detailed trip level data of trips made by taxis in New York City.
+-- Analysis is focused on the yellow taxis for the months of November and December 2017.
+
+
+-- Running Pre-Requesite commands
+ADD JAR /opt/cloudera/parcels/CDH/lib/hive/lib/hive-hcatalog-core-1.1.0-cdh5.11.2.jar;
+
+--Set the following parameters on our Hue Notebook:
+SET hive.exec.dynamic.partition = true;
+SET hive.exec.max.dynamic.partitions=100000;
+SET hive.exec.max.dynamic.partitions.pernode=100000;
+
+
+-- Creating database and using it for EDA.
+
+Create database csnyc;
+
+use csnyc;
+
+
+-- Creating table with appropriate datatypes
+
+drop table csnyc.nyc_table; -- Dropping table if it exist already
+
+Create external table if not exists csnyc.nyc_table( VendorID int, tpep_pickup_datetime timestamp, tpep_dropoff_datetime timestamp,
+passenger_count int, trip_distance double, RatecodeID int, store_and_fwd_flag string, PULocationID int, DOLocationID int,payment_type int,
+fare_amount double, extra double, mta_tax double, tip_amount double, tolls_amount double, improvement_surcharge double, total_amount double)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/common_folder/nyc_taxi_data/'
+tblproperties ("skip.header.line.count"="1");
+
+-- Looking into the table if data is loaded successfully.
+
+select * from csnyc.nyc_table limit 10;
+
+--All table fields have been populated with an appropriate Schema and format to store the data.
+
+
+-- Checking No. of total Records in the dataset
+select count(*) from csnyc.nyc_table; 
+
+-- We have 1174569 records in total.
+
+
+  --**************************************************************************************************************************************************************
+
+--**************************************************** BASIC DATA QUALITY VERIFICATION & EDA**********************************************************************
+
+-- Q 1. How many records has each TPEP provider provided? Write a query that summarises the number of records of each provider
+
+-- Summarising the No. of Records of each vendor.
+
+Select VENDORID as TPEP_Provider_1CreativeMob_2VeriFone, count(*) as No_of_Records
+from csnyc.nyc_table
+group by VENDORID
+order by VENDORID;
+
+-- 1. Creative Mobile Technologies, LLC has 527386 records
+-- 2. VeriFone Inc. has 647183 records
+
+
+
+  --****************************************************************************************************************************************************************
+
+--Q 2.The data provided is for months November and December only. Check whether the data is consistent, and if not, identify the data quality issues. 
+-- Mention all data quality issues in comments.
+
+-- 2.1 Looking at tpep_pickup_datetime **********************
+
+select  year(tpep_pickup_datetime)as Pickup_Year, month(tpep_pickup_datetime)as Pickup_Month, count(*)as No_of_records
+from csnyc.nyc_table
+group by year(tpep_pickup_datetime), month(tpep_pickup_datetime);
+
+-- As our study is focussed only on the trip details of November and December of 2017. There are a 14 nonconforming records based on pickup_time.
+
+
+--2.2 looking at tpep_dropoff_datetime************************
+select  year(tpep_dropoff_datetime)as Dropoff_Year, month(tpep_dropoff_datetime)as Dropoff_Month, count(*)as No_of_records
+from csnyc.nyc_table
+group by year(tpep_dropoff_datetime), month(tpep_dropoff_datetime)
+order by Dropoff_Year, Dropoff_Month; 
+
+-- As our study is focussed only on the trip details of November and December of 2017. There are a 117 nonconforming records based on dropoff_time.
+
+
+-- 2.3 Let's check if there are any records in which the pickup_timestamp is after the dropoff_timestamp.******************************
+-- This will clearly be a nonconformity as it is not logical.
+
+SELECT count(*) as Non_confirmity
+FROM csnyc.nyc_table
+where unix_timestamp(tpep_pickup_datetime) > unix_timestamp(tpep_dropoff_datetime);
+
+--There are 73 non_confirming records
+
+--> Checking from which vendor this values are coming from
+
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where unix_timestamp(tpep_pickup_datetime) > unix_timestamp(tpep_dropoff_datetime)
+group by vendorid;
+
+-- 1. Creative Mobile Technologies, LLC is providing all 73 wrong records
+
+
+-- 2.4. Vendor_ID *****************************
+--> Let's see if there Null values present in the column
+
+select count(*)
+from csnyc.nyc_table
+where vendorid is NULL;
+
+-- All row contains values.
+
+-- 2.5. Passsenger Count************************
+
+-- Let's see the number of Passenegers
+
+select passenger_count , count(*) as Num_Of_Passengers
+from csnyc.nyc_table
+group by passenger_count
+order by passenger_count;
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where passenger_count <1
+group by vendorid;
+
+-- Passenger count value ranges from 0-9 , there is some data quality issue as trip cannot be registered for 0 passenger(this is due to some abnormalties or some refunds) and as per rule a taxi cannot accomodate 9 passenger.
+-- We have 6824 records with 0 passenger count
+-- 11 incorrect values are coming from 2 i.e.VeriFone Inc and 6813 from 1 i.e.Creative Mobile Technologies, LLC
+
+
+-- 2.6. Trip Distance*******************
+
+-- Trip distance cannot be NULL or ZERO or Negative
+
+--> ASSUMPTION: Trip Distance cannot be Zero or NULL or Negative value
+
+select count(*)
+from csnyc.nyc_table
+where trip_distance <= 0;
+-- There is 7402 incorrect values
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where trip_distance <= 0
+group by vendorid;
+
+-- 3185 incorrect values are coming from 2 i.e.VeriFone Inc and 4217 from 1 i.e.Creative Mobile Technologies, LLC
+
+
+-- 2.7. RateCodeID **********************
+
+--> Checking count of ratecodeid
+
+--> ASSUMPTION: Rate Code ID can only take values between 1-6
+
+select ratecodeid, count(*) as No_of_records
+from csnyc.nyc_table
+group by ratecodeid
+order by ratecodeid;
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where ratecodeid>6 or ratecodeid<1
+group by vendorid;
+
+-- As per result there are 7 distinct ratecodeid while the data dictionary limits it to 6 distinct codes between 1-6.
+-- Under ratecodeid 99 there is 9 records which will be treated as non-conformity.
+-- 1 incorrect value are coming from 2 i.e.VeriFone Inc and 8 from 1 i.e.Creative Mobile Technologies, LLC
+
+
+-- 2.8.Store_and_fwd_flag **************************
+
+--> ASSUMPTION: It can only have values Y and S
+
+select Store_and_fwd_flag, count(*) as No_of_Records
+from csnyc.nyc_table
+group by Store_and_fwd_flag;
+
+-- All values look correct
+
+
+-- 2.9. Payment_type **********************
+
+--> ASSUMPTION: Payment_type can only take values between 1-6
+
+select payment_type, count(*) No_of_Records
+from csnyc.nyc_table
+group by payment_type;
+
+-- There are 4 distinct payment type as given in dictionary and values seems correct
+
+
+-- 2.10. Fare_amount******************************
+
+--> ASSUMPTION: Fare Amount cannot be Zero and take negative values
+
+select count(*) 
+from csnyc.nyc_table
+where fare_amount<=0;
+
+-- 870 values contain incorrect data.
+
+
+--> Checking from which vendor this values are coming from
+
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where fare_amount<=0
+group by vendorid;
+
+-- Incorrect values coming from Vendor_Id 2(VeriFone Inc) is 639.
+-- Incorrect values coming from Vendor_Id 1( Creative Mobile Technologies) is 231.
+
+
+-- 2.11. Extra******************************
+
+--> ASSUMPTION: Extra column cannot contain negative values
+
+select extra , count(*) No_of_Records
+from csnyc.nyc_table
+group by extra
+order by extra;
+
+-- There is 14 distinct extra charges are there.
+-- Extra is a surcharge that can only take up $0.5 and $1 during rush hour and over night charges, otherwise it is $0. 
+-- Therefore, all other values will be treated as non-conformities.
+-- Total incorrect values are 286
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where extra<0
+group by vendorid;
+
+-- incorrect values coming from Vendor_Id 2(VeriFone Inc) is 285
+-- incorrect values coming from Vendor_Id 1( Creative Mobile Technologies) is 1
+
+
+-- 2.12. MTA_tax *************************
+
+--> ASSUMPTION: MTA_tax column can only take values between 0 and 0.5
+
+select MTA_tax, count(*) No_of_Records
+from csnyc.nyc_table
+group by MTA_tax
+order by MTA_tax;
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where MTA_tax not in (0,0.5)
+group by vendorid;
+
+--There are 5 distinct mta_tax values in the dataset Ranging between -$0.5 and $11.4 and 548 incorrect values
+--As per data dictionary it can only take up two values $0 or $0.5 all other values will be treated as non-conformities.
+-- Incorrect values are coming Vendor_Id 2(VeriFone Inc) is 547
+-- Incorrect values coming from Vendor_Id 1( Creative Mobile Technologies) is 1
+
+
+-- 2.13. Improvement_surcharge *************************
+
+--> ASSUMPTION: Improvement_surcharge column can only value of 0.3
+
+select Improvement_surcharge,  count(*) No_of_Records
+from csnyc.nyc_table
+group by Improvement_surcharge
+order by Improvement_surcharge;
+
+-- There are 4 distinct Improvement_surcharge values in the dataset Ranging between -$0.3 and $1.
+-- Improvement_surcharge can only take valye of $ 0.3, all other values are non-conformities
+-- 849 incorrect values are present
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where  Improvement_surcharge != 0.3
+group by vendorid;
+
+-- Incorrect values coming from Vendor_Id 2(VeriFone Inc) is 788
+-- Incorrect values coming from Vendor_Id 1( Creative Mobile Technologies) is 61
+
+
+-- 2.14. Tip_amount ************************ 
+
+-- Checking if non-zero tip amount has been registed for cash payment trips.
+
+select tip_amount as Tip_Value, count(*) as No_of_Records
+from csnyc.nyc_table
+where payment_type=2 and tip_amount!= 0
+group by tip_amount;
+
+-- There is no tip amount for cash payments.
+
+-- Let's see if the tip amount is less than 0, due to some issue
+select count(*) as No_of_Records
+from csnyc.nyc_table
+where tip_amount< 0;
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where tip_amount< 0
+group by vendorid;
+
+-- Incorrect values coming from Vendor_Id 2(VeriFone Inc) is 4
+
+
+-- 3.15. Total_amount *****************************
+--> ASSUMPTION: Total_amount this column shouldn't have negative values and zero
+
+select total_amount, count(*) No_of_Records
+from csnyc.nyc_table
+where Total_amount <= 0
+group by total_amount;
+
+---there is 40 distinct values which are negative and zero, these are non confirmity
+-- incorrect values are 681
+
+--> Checking from which vendor this values are coming from
+select vendorid, count(*) as No_of_Records
+from csnyc.nyc_table
+where Total_amount <= 0
+group by vendorid;
+
+-- Incorrect values coming from Vendor_Id 2(VeriFone Inc) is 639
+-- Incorrect values coming from Vendor_Id 1( Creative Mobile Technologies) is 42
+
+  --*****************************************************************************************************************************************************************
+  
+  
+--Q 3. You might have encountered unusual or erroneous rows in the dataset. Can you conclude which vendor is doing a bad job in providing the records using different columns of the dataset? 
+-- Summarise your conclusions based on every column where these errors are present.
+
+
+select vendorid as Vendor_Id_1CreativeMob_2VeriFone, count(*) as Non_confirmity
+from csnyc.nyc_table
+where (year(tpep_pickup_datetime) !=2017 or month(tpep_pickup_datetime) not in (11,12) or year(tpep_dropoff_datetime) !=2017 or month(tpep_dropoff_datetime) not in (11,12) or
+unix_timestamp(tpep_pickup_datetime) > unix_timestamp(tpep_dropoff_datetime) or passenger_count not in (1,2,3,4,5,6) or trip_distance <= 0.0 or RateCodeID not in (1,2,3,4,5,6) or payment_type not in (1,2,3,4,5,6)
+or fare_amount <= 0 or extra not in (0,0.5,1) or mta_tax not in(0,0.5) or tip_amount < 0.0 or (payment_type=2 and tip_amount!=0) or tolls_amount < 0.0 or improvement_surcharge not in (0,0.3) or total_amount <= 0)
+group by vendorid
+order by vendorid;
+
+-->For VendorID 1: Creative Moblie Technologies,LLC
+-- Number of Non-Conforming Records Provided: 12,912 records
+-- Total Records= 5,27,389
+-- Percentage Non-Conforming Records: 2.44%
+
+--For VendorID 2: VeriFone Inc.
+--Number of Non-Conforming Records Provided: 6,416
+--Total Records= 6,47,183
+--Percentage Non-Conforming Records: 0.99%
+
+--As per above statements it is clear that of the two vendors, VendorID 1: Creative Moblie Technologies,LLC is doing a bad job of providing records.
+
+
+
+-- ****************************CREATING ORC TABLE******************************************************************
+
+
+Drop table csnyc.nyc_table_partition_orc; --> Dropping table if it already exists
+
+Create external table if not exists csnyc.nyc_table_partition_orc(
+VendorID int, tpep_pickup_datetime timestamp, tpep_dropoff_datetime timestamp, passenger_count int,
+trip_distance double, RatecodeID int, store_and_fwd_flag string, PULocationID int, DOLocationID int,
+payment_type int, fare_amount double, extra double, mta_tax double, tip_amount double, tolls_amount double,
+improvement_surcharge double, total_amount double) partitioned by (mnth int, m_day int)
+stored as orc location '/user/hive/warehouse/seema0124_gmail'
+tblproperties ("orc.compress"="SNAPPY");
+
+
+-- ************Inserting values into the table and creating a cleaned table for analysis****************************
+
+
+insert overwrite table csnyc.nyc_table_partition_orc partition(mnth, m_day)
+select *, month(tpep_pickup_datetime) as mnth, day(tpep_pickup_datetime) as m_day
+from csnyc.nyc_table 
+where year(tpep_pickup_datetime)=2017 and month(tpep_pickup_datetime) in (11,12) and year(tpep_dropoff_datetime)=2017 
+and month(tpep_dropoff_datetime) in (11,12) and unix_timestamp(tpep_pickup_datetime) < unix_timestamp(tpep_dropoff_datetime) 
+and passenger_count in(1,2,3,4,5,6) and trip_distance > 0.0 and RatecodeID in(1,2,3,4,5,6) and payment_type in (1,2,3,4,5,6) 
+and fare_amount > 0 and extra in (0,0.5,1) and mta_tax in(0,0.5) and tip_amount>=0.0 and tolls_amount >= 0.0
+and improvement_surcharge in (0,0.3) and total_amount > 0;
+
+
+
+
+--************************************ ANALYSIS-I****************************************************************************
+
+--Analysis will be performed using the table nyc_table_partition_orc subject to the predefined data assumptions.
+
+--Q 1. Compare the overall average fare per trip for November and December.
+
+select mnth as Month_of_Year, round(avg(fare_amount),2)as Average_Fare_Amt
+from csnyc.nyc_table_partition_orc
+group by mnth
+order by mnth;
+
+-- lets compare the results from above
+
+select round(avg(CASE when mnth=11 then fare_amount else null end),2)as November_Avg_Fare, round(avg(CASE when mnth=12 then fare_amount else null end),2)as December_Avg_Fare,
+round(100*((avg(CASE when mnth=11 then fare_amount else null end)-avg(CASE when mnth=12 then fare_amount else null end))/avg(CASE when mnth=12 then fare_amount else null end)),2)as Nov_AvgFare_greaterthan_Dec
+from csnyc.nyc_table_partition_orc;
+
+--November Average fare_amount: $6.38
+--December Average fare_amount: $6.42
+--Average fare_amount recorded during November is -0.7% higher than the average fare_amount recorded in December.
+    
+    
+   -- ***********************************************************************************************************************************************************
+
+-- Q 2. Explore the ‘number of passengers per trip’ - how many trips are made by each level of ‘Passenger_count’? Do most people travel solo or with other people?
+
+
+-- lets check how many trips are made by each level of ‘Passenger_count’.
+
+select passenger_count as No_of_Passenger , count(*) as No_of_Records
+from csnyc.nyc_table_partition_orc
+group by passenger_count
+order by passenger_count;
+
+
+-- Let's check if the passengers prefer to travel solo(i.e, passenger_count=1) or in groups (i.e, passenger_count b/w 2-6)
+
+select sum(CASE when passenger_count = 1 then 1 else 0 end)as No_of_Solo_Passenger, 
+sum(CASE when passenger_count != 1 then 1 else 0 end)as No_of_Group_Passenger, 
+round(100*sum(CASE when passenger_count = 1 then 1 else 0 end)/count(*),3) as Solo_Trips_Percentage
+from csnyc.nyc_table_partition_orc;
+
+
+-- No_of_Solo_Passenger per trip is 8,16,970.
+-- No_of_Group_Passenger per trip is 3,36,525.
+-- %age of Solo passenger trip is 70.826.( Means 70.826 people prefer to travel solo)
+
+
+   -- ******************************************************************************************************************************************
+
+-- Q 3. Which is the most preferred mode of payment?
+
+-- Lets check which payment mode people choosed w.r.t No_of_Records
+
+select payment_type as Payment_mode, count(*) as No_of_Records
+from csnyc.nyc_table_partition_orc
+group by payment_type
+order by No_of_Records;
+
+
+
+-- As per above table, Credit card (payment_mode=1), Cash (payment_mode=2) constitute the most of the records.
+-- lets check which is the most preffered payment mode.
+
+select sum(CASE when payment_type = 1 then 1 else 0 end)as Credit_Card_Payment, sum(CASE when payment_type = 2 then 1 else 0 end)as Cash_Payment, count(*)as Total_trips,
+round(100*sum(CASE when payment_type = 1 then 1 else 0 end)/count(*),2) as Percentage_Credit_Card_Payment,
+round(100*sum(CASE when payment_type = 2 then 1 else 0 end)/count(*),2) as Percentage_Cash_Payment
+from csnyc.nyc_table_partition_orc;
+
+
+--Credit card (payment_mode=1)
+   --Number of Payments done with Credit Cards= 779093
+   --Percentage of trip using Credit Cards= 67.54
+
+-- Cash (payment_mode=2)
+   -- Number of Payments done with Cash= 368611
+   --Percentage of trip using Cash= 31.96
+   
+--Total_Trips=1153495
+
+-- Credit card is the most preferred mode of Payment.
+
+
+  --**************************************************************************************************************************************************
+
+--Q 4. What is the average tip paid per trip? Compare the average tip with the 25th, 50th and 75th percentiles and comment whether the ‘average tip’ is a representative statistic (of the central tendency)
+--     of ‘tip amount paid’. Hint: You may use percentile_approx(DOUBLE col, p): Returns an approximate pth percentile of a numeric column (including floating point types) in the group.
+
+--As per dataset its visible that tip_amount is not recorded for cash payments and is default set to 0.
+--We need to remove these fields before we compute the central tendency as these records are synonymous to missing records. Therefore we will remove all records where payment_type=2 [Cash Payments]
+
+
+select round(avg(tip_amount),2) as Avg_tip, round(percentile_approx(tip_amount, 0.25),2)as 25th_Percentile_Tip, round(percentile_approx(tip_amount, 0.50),2)as 50th_Percentile_Tip,
+round(percentile_approx(tip_amount, 0.75),2)as 75th_Percentile_Tip, count(distinct tip_amount)as Distinct_Tip_Amounts
+from csnyc.nyc_table_partition_orc
+where Payment_type=1;
+
+-- We will use Percentile_approx() in place of Percentile () as data is stored as Double data.
+-- Difference between Avg_Tip and 50th_Percentile_Tip is 0.7. There is skewness towards right side in the Tip_amount distribution between different percentile range. its happens due to high amount of tip_amount by some passengers.
+-- Average_tip is not the representative statistic(of central tendency).50th_Percentile_Tip is the better representative of central tendency.
+
+
+  --*******************************************************************************************************************************************************
+  
+-- Q 5. Explore the ‘Extra’ (charge) variable - what fraction of total trips have an extra charge is levied?
+--Lets check the Extra amount w.r.t to No_of_Records
+
+select Extra as Extra_Charges, count(*) as No_of_records
+from csnyc.nyc_table_partition_orc
+group by Extra
+order by Extra;
+
+-- Extra_Charges as $0.5 has less no of Trips in comparision to $1. Also 
+
+-- lets compare the Fraction of trips for which the extra_charge was levied.
+
+select sum(CASE when extra != 0 then 1 else 0 end)as Trips_With_Extra_Charge, count(*)as Total_No_Trips,
+round(sum(CASE when extra != 0 then 1 else 0 end)/count(*),3) as Fraction_Trips_With_Extra_Charges
+from csnyc.nyc_table_partition_orc;
+
+--No of trips for which extra charges levied 532261
+--Total No of trips 1153495
+-- Fraction_Trips_With_Extra_Charges is 0.461(46%)
+
+
+
+--************************************ ANALYSIS-II****************************************************************************
+
+-- Q 1. What is the correlation between the number of passengers on any given trip, and the tip paid per trip?
+-- Do multiple travellers tip more compared to solo travellers?
+
+select corr(passenger_count, tip_amount) as `Co-Relation`
+from csnyc.nyc_table_partition_orc;
+
+-- Corelation is -0.005, which is very small and almost equal to zero and it is safe to say that there is no corelation
+
+with alone as(
+    select tip_amount,
+    case when passenger_count = 1 then 1
+    else 0 end is_alone
+    from csnyc.nyc_table_partition_orc )select corr(is_alone, tip_amount) from alone;
+    
+-- The corelation value is 0.006 which is very low and we can say that mutilple traveller dont tip more compared to solo travellers
+
+
+  --************************************************************************************************************************************************************
+
+-- Q 2.Segregate the data into five segments of ‘tip paid’: [0-5), [5-10), [10-15) , [15-20) and >=20. Calculate the percentage share of each bucket
+
+select tip_segment, count(*)as No_of_Records, round(100*(count(*)/max(records_count)),2) as Percentage_Share
+from (select count(*) over () records_count,
+     Case
+     when (tip_amount>=0 and tip_amount<5)   then '[0-5]' 
+     when (tip_amount>=5 and tip_amount<10)  then '[5-10]' 
+     when (tip_amount>=10 and tip_amount<15) then '[10-15]'
+     when (tip_amount>=15 and tip_amount<20) then '[15-20]'
+     else '20above_segment'
+     end as tip_segment
+     from csnyc.nyc_table_partition_orc) as Segments
+group by tip_segment
+order by Percentage_Share;
+
+-- Results of the table clearly specify the below tip_segments
+-- [0-5] constitutes 92.4% of all records in the dataset.
+-- [5-10] constitutes 5.64% of all records in the dataset.
+-- [10-15] constitutes 1.68% of all records in the dataset.
+-- [15-20] constitutes 0.19% of all records in the dataset.
+-- 20above_segment constitutes 0.09% of all records in the dataset.
+
+
+  -- *******************************************************************************************************************************************************
+
+--Q 3.Which month has a greater average ‘speed’ - November or December? Note that the variable ‘speed’ will have to be derived from other metrics.
+
+-- speed = distance/time
+
+select mnth,avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime) )/3600) ) as Average_Speed
+from csnyc.nyc_table_partition_orc
+group by mnth;
+
+--> November has 10.96 miles/hour as Average Speed
+--> December has 11.06  miles/hour as Averge sepeed
+--> Average Speed of December is greater than the Average speed  of November.
+
+  --****************************************************************************************************************************************************
+
+--Q 4.Analyse the average speed of the most happening days of the year, i.e. 31st December (New year’s eve) and 25th December (Christmas) and 
+-- compare it with the overall average
+
+-- New year Average Speed
+
+select avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime) )/3600) ) as NY_Speed
+from csnyc.nyc_table_partition_orc
+where mnth = 12 and m_day =31;
+
+--> Average Speed of 31st December is 13.26 MPH.
+
+-- Christmas Average Speed
+
+select avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime) )/3600) ) as Christmas_Speed
+from csnyc.nyc_table_partition_orc
+where mnth = 12 and m_day =25;
+
+-->Average Speed of 25th December is 15.26 MPH.
+
+-- Overall Average Speed
+
+select avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime) )/3600) ) as Christmas_Speed
+from csnyc.nyc_table_partition_orc;
+
+-- OverAll Aaverage Speed is 11.01 MPH.
+
+
+--1. Average Speed Statistics of New Year Eve (31st December)
+-- Average Speed of 31st December is 13.26 MPH.
+-- Speed greater than Overall Avg: 2.25 MPH
+
+--2. Average Speed Statistics of Christmas Eve (25th December)
+-- Average Speed of 25th December is 15.26 MPH.
+-- Speed greater than Overall Avg: 4.25 MPH
+
+--The Average Speed on both Christmas Eve and New Year Eve is higher than the Overall Average Speed.
+--The Average Speed is Highest on Christmas Eve out of the 3 instances, will be considered for comparison.
+
+
+*********************************************************END****************************************************************************************************
+
+
+
